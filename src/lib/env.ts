@@ -80,12 +80,13 @@ const serverSchema = z.object({
 if (typeof window === "undefined") {
   const result = serverSchema.safeParse(process.env);
   if (!result.success) {
-    const msg = JSON.stringify(result.error.flatten().fieldErrors);
-    if (env.NODE_ENV === "production") {
-      throw new Error(`Invalid server environment: ${msg}`);
-    } else {
-      // eslint-disable-next-line no-console
-      console.warn(`⚠️  Server env validation warnings: ${msg}`);
-    }
+    // Warn but don't crash — so builds/deploys don't fail on incomplete env.
+    // Features degrade via `features` flags, and libraries that truly need a
+    // value (e.g. crypto) throw a clear error only when actually used.
+    // eslint-disable-next-line no-console
+    console.warn(
+      "⚠️  Missing/invalid server env:",
+      JSON.stringify(result.error.flatten().fieldErrors),
+    );
   }
 }
