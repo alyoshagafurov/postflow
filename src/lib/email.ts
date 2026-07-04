@@ -34,35 +34,85 @@ export type SendEmailInput = {
  * reset remain fully testable without a mail provider.
  */
 export async function sendEmail({ to, subject, html, text }: SendEmailInput) {
-  const t = getTransport();
   const plain = text ?? stripHtml(html);
 
-  if (!t) {
-    // eslint-disable-next-line no-console
-    console.info(
-      `\n──────────── [email:dev] ────────────\nTo: ${to}\nSubject: ${subject}\n\n${plain}\n─────────────────────────────────────\n`,
-    );
-    return { delivered: false as const, dev: true as const };
+  // 1) Resend (HTTP API on :443) — works from any host, including cloud
+  //    platforms (Railway, Vercel…) that block or throttle outbound SMTP.
+  if (features.resend) {
+    const r = await sendViaResend({ to, subject, html, text: plain });
+    if (r.delivered) return r;
+    // otherwise fall through to SMTP
   }
 
+  // 2) SMTP (nodemailer)
+  const t = getTransport();
+  if (t) {
+    try {
+      const info = await t.sendMail({
+        from: env.EMAIL_FROM,
+        to,
+        subject,
+        html,
+        text: plain,
+      });
+      // eslint-disable-next-line no-console
+      console.info(
+        `[email] sent to ${to} — ${info.response ?? info.messageId ?? "ok"}`,
+      );
+      return { delivered: true as const, dev: false as const };
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[email] SMTP FAILED to ${to}:`,
+        err instanceof Error ? err.message : err,
+      );
+      return { delivered: false as const, dev: false as const };
+    }
+  }
+
+  // 3) Dev fallback — log to console (no provider configured)
+  // eslint-disable-next-line no-console
+  console.info(
+    `\n──────────── [email:dev] ────────────\nTo: ${to}\nSubject: ${subject}\n\n${plain}\n─────────────────────────────────────\n`,
+  );
+  return { delivered: false as const, dev: true as const };
+}
+
+async function sendViaResend(msg: {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+}) {
   try {
-    const info = await t.sendMail({
-      from: env.EMAIL_FROM,
-      to,
-      subject,
-      html,
-      text: plain,
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: env.EMAIL_FROM,
+        to: msg.to,
+        subject: msg.subject,
+        html: msg.html,
+        text: msg.text,
+      }),
+      signal: AbortSignal.timeout(15_000),
     });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      // eslint-disable-next-line no-console
+      console.error(`[email] Resend FAILED to ${msg.to}: ${res.status} ${body}`);
+      return { delivered: false as const, dev: false as const };
+    }
     // eslint-disable-next-line no-console
-    console.info(
-      `[email] sent to ${to} — ${info.response ?? info.messageId ?? "ok"}`,
-    );
+    console.info(`[email] sent via Resend to ${msg.to}`);
     return { delivered: true as const, dev: false as const };
   } catch (err) {
-    // Never let a mail failure break the calling flow (register/reset/etc.).
     // eslint-disable-next-line no-console
     console.error(
-      `[email] FAILED to ${to}:`,
+      `[email] Resend error to ${msg.to}:`,
       err instanceof Error ? err.message : err,
     );
     return { delivered: false as const, dev: false as const };

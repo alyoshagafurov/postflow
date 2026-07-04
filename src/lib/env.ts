@@ -44,6 +44,8 @@ export const env = {
   EMAIL_FROM: process.env.EMAIL_FROM ?? "PostFlow <no-reply@postflow.app>",
   SUPPORT_EMAIL: process.env.SUPPORT_EMAIL ?? "support@postflow.app",
 
+  RESEND_API_KEY: process.env.RESEND_API_KEY ?? "",
+
   UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL ?? "",
   UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN ?? "",
 
@@ -62,6 +64,7 @@ export const features = {
   s3: Boolean(env.S3_ENDPOINT && env.S3_ACCESS_KEY_ID && env.S3_SECRET_ACCESS_KEY),
   stripe: Boolean(env.STRIPE_SECRET_KEY),
   smtp: Boolean(env.SMTP_HOST && env.SMTP_USER),
+  resend: Boolean(env.RESEND_API_KEY),
   redis: Boolean(env.REDIS_URL),
   upstash: Boolean(env.UPSTASH_REDIS_REST_URL && env.UPSTASH_REDIS_REST_TOKEN),
 } as const;
