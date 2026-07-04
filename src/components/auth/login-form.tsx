@@ -7,7 +7,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { signIn } from "next-auth/react";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, MailWarning } from "lucide-react";
 
 import { loginSchema, type LoginInput } from "@/lib/validations/auth";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Form,
   FormControl,
@@ -39,6 +40,8 @@ export function LoginForm({
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
+  const [resending, setResending] = useState(false);
 
   const form = useForm<LoginInput>({
     resolver: zodResolver(loginSchema),
@@ -47,16 +50,39 @@ export function LoginForm({
 
   async function onSubmit(values: LoginInput) {
     setLoading(true);
+    setUnverifiedEmail(null);
     const res = await signIn("credentials", { ...values, redirect: false });
     setLoading(false);
 
     if (!res || res.error) {
-      toast.error("Неверный email или пароль");
+      if (res?.error && res.error.includes("EMAIL_NOT_VERIFIED")) {
+        setUnverifiedEmail(values.email);
+        toast.error("Сначала подтвердите email");
+      } else {
+        toast.error("Неверный email или пароль");
+      }
       return;
     }
     toast.success("С возвращением!");
     router.push(callbackUrl);
     router.refresh();
+  }
+
+  async function resend() {
+    if (!unverifiedEmail) return;
+    setResending(true);
+    try {
+      await fetch("/api/auth/resend-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: unverifiedEmail }),
+      });
+      toast.success("Письмо с подтверждением отправлено");
+    } catch {
+      toast.error("Не удалось отправить");
+    } finally {
+      setResending(false);
+    }
   }
 
   return (
@@ -68,6 +94,29 @@ export function LoginForm({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {unverifiedEmail && (
+          <Alert className="border-warning/40 bg-warning/5">
+            <MailWarning className="h-4 w-4 text-warning" />
+            <AlertTitle>Email не подтверждён</AlertTitle>
+            <AlertDescription className="space-y-2">
+              <span>
+                Подтвердите адрес по ссылке из письма, чтобы войти.
+              </span>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={resend}
+                disabled={resending}
+              >
+                {resending ? (
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                ) : null}
+                Отправить письмо повторно
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+
         {googleEnabled && (
           <>
             <GoogleButton callbackUrl={callbackUrl} />

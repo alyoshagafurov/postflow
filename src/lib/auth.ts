@@ -44,6 +44,11 @@ providers.push(
       const valid = await verifyPassword(password, user.passwordHash);
       if (!valid) return null;
 
+      if (!user.emailVerified) {
+        // Block credentials login until the email is confirmed.
+        throw new Error("EMAIL_NOT_VERIFIED");
+      }
+
       return {
         id: user.id,
         email: user.email,
@@ -65,6 +70,17 @@ export const authOptions: NextAuthOptions = {
   },
   providers,
   callbacks: {
+    async signIn({ user, account }) {
+      // Google verifies the email itself — mark it verified so OAuth users are
+      // never blocked by the credentials email-verification gate.
+      if (account?.provider === "google" && user.email) {
+        await prisma.user.updateMany({
+          where: { email: user.email, emailVerified: null },
+          data: { emailVerified: new Date() },
+        });
+      }
+      return true;
+    },
     async jwt({ token, user }) {
       if (user) {
         token.id = (user as { id: string }).id;

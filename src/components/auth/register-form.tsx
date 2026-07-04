@@ -2,12 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { signIn } from "next-auth/react";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, MailCheck } from "lucide-react";
 
 import { registerSchema, type RegisterInput } from "@/lib/validations/auth";
 import { Button } from "@/components/ui/button";
@@ -32,8 +30,9 @@ import {
 import { GoogleButton } from "@/components/auth/google-button";
 
 export function RegisterForm({ googleEnabled }: { googleEnabled: boolean }) {
-  const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [sentEmail, setSentEmail] = useState<string | null>(null);
+  const [resending, setResending] = useState(false);
 
   const form = useForm<RegisterInput>({
     resolver: zodResolver(registerSchema),
@@ -52,33 +51,73 @@ export function RegisterForm({ googleEnabled }: { googleEnabled: boolean }) {
 
       if (!res.ok) {
         if (res.status === 409) {
-          form.setError("email", {
-            message: data.error ?? "Email уже занят",
-          });
+          form.setError("email", { message: data.error ?? "Email уже занят" });
         }
         toast.error(data.error ?? "Не удалось зарегистрироваться");
         return;
       }
 
-      // Auto sign-in after successful registration.
-      const signInRes = await signIn("credentials", {
-        email: values.email,
-        password: values.password,
-        redirect: false,
-      });
-
-      if (signInRes?.ok) {
-        toast.success("Аккаунт создан!");
-        router.push("/onboarding");
-        router.refresh();
-      } else {
-        router.push("/login");
-      }
+      // No session is created — the user must confirm their email first.
+      setSentEmail(values.email.toLowerCase().trim());
     } catch {
       toast.error("Сеть недоступна. Попробуйте ещё раз.");
     } finally {
       setLoading(false);
     }
+  }
+
+  async function resend() {
+    if (!sentEmail) return;
+    setResending(true);
+    try {
+      await fetch("/api/auth/resend-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: sentEmail }),
+      });
+      toast.success("Письмо отправлено повторно");
+    } catch {
+      toast.error("Не удалось отправить");
+    } finally {
+      setResending(false);
+    }
+  }
+
+  if (sentEmail) {
+    return (
+      <Card>
+        <CardHeader className="items-center text-center">
+          <div className="mb-2 grid h-12 w-12 place-items-center rounded-full bg-primary/15 text-primary">
+            <MailCheck className="h-6 w-6" />
+          </div>
+          <CardTitle>Подтвердите email</CardTitle>
+          <CardDescription>
+            Мы отправили ссылку на{" "}
+            <span className="text-foreground">{sentEmail}</span>. Перейдите по
+            ней, чтобы активировать аккаунт и войти.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={resend}
+            disabled={resending}
+          >
+            {resending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              "Отправить письмо повторно"
+            )}
+          </Button>
+        </CardContent>
+        <CardFooter className="justify-center">
+          <Link href="/login" className="text-sm text-primary hover:underline">
+            Вернуться ко входу
+          </Link>
+        </CardFooter>
+      </Card>
+    );
   }
 
   return (

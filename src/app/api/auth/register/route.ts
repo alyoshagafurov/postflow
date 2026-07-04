@@ -4,6 +4,7 @@ import { hashPassword } from "@/lib/password";
 import { ensureUserSubscription } from "@/lib/billing/subscription";
 import { writeAudit } from "@/lib/audit";
 import { rateLimit } from "@/lib/ratelimit";
+import { createAndSendEmailVerification } from "@/lib/verification";
 import { errorJson, getClientIp, json, zodFieldErrors } from "@/lib/api";
 
 export async function POST(req: Request) {
@@ -48,5 +49,9 @@ export async function POST(req: Request) {
     userAgent: req.headers.get("user-agent") ?? undefined,
   });
 
-  return json({ ok: true }, 201);
+  // Send the confirmation email. The account stays unverified (no session)
+  // until the user clicks the link.
+  await createAndSendEmailVerification(email);
+
+  return json({ ok: true, requiresVerification: true }, 201);
 }
