@@ -6,10 +6,12 @@ let transporter: Transporter | null = null;
 function getTransport(): Transporter | null {
   if (transporter) return transporter;
   if (!features.smtp) return null;
+  const port = Number(env.SMTP_PORT) || 587;
   transporter = nodemailer.createTransport({
     host: env.SMTP_HOST,
-    port: Number(env.SMTP_PORT) || 587,
-    secure: Number(env.SMTP_PORT) === 465,
+    port,
+    secure: port === 465, // 465 = implicit TLS; 587 = STARTTLS
+    requireTLS: port !== 465,
     auth: { user: env.SMTP_USER, pass: env.SMTP_PASS },
   });
   return transporter;
@@ -39,8 +41,28 @@ export async function sendEmail({ to, subject, html, text }: SendEmailInput) {
     return { delivered: false as const, dev: true as const };
   }
 
-  await t.sendMail({ from: env.EMAIL_FROM, to, subject, html, text: plain });
-  return { delivered: true as const, dev: false as const };
+  try {
+    const info = await t.sendMail({
+      from: env.EMAIL_FROM,
+      to,
+      subject,
+      html,
+      text: plain,
+    });
+    // eslint-disable-next-line no-console
+    console.info(
+      `[email] sent to ${to} — ${info.response ?? info.messageId ?? "ok"}`,
+    );
+    return { delivered: true as const, dev: false as const };
+  } catch (err) {
+    // Never let a mail failure break the calling flow (register/reset/etc.).
+    // eslint-disable-next-line no-console
+    console.error(
+      `[email] FAILED to ${to}:`,
+      err instanceof Error ? err.message : err,
+    );
+    return { delivered: false as const, dev: false as const };
+  }
 }
 
 /** Minimal, brand-consistent HTML wrapper for transactional emails. */
