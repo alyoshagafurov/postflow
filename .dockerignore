@@ -1,0 +1,11 @@
+node_modules
+.next
+.git
+.env
+.env.worker
+.env*.local
+.uploads
+.claude-flow
+npm-debug.log*
+*.log
+.DS_Store
