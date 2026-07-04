@@ -13,6 +13,10 @@ function getTransport(): Transporter | null {
     secure: port === 465, // 465 = implicit TLS; 587 = STARTTLS
     requireTLS: port !== 465,
     auth: { user: env.SMTP_USER, pass: env.SMTP_PASS },
+    // Never let the SMTP connection hang a request indefinitely.
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 20_000,
   });
   return transporter;
 }

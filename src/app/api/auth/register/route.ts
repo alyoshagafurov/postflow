@@ -49,9 +49,12 @@ export async function POST(req: Request) {
     userAgent: req.headers.get("user-agent") ?? undefined,
   });
 
-  // Send the confirmation email. The account stays unverified (no session)
-  // until the user clicks the link.
-  await createAndSendEmailVerification(email);
+  // Fire-and-forget the confirmation email so a slow/blocked SMTP server can
+  // never hang the registration response. The user can resend if needed.
+  void createAndSendEmailVerification(email).catch((e) => {
+    // eslint-disable-next-line no-console
+    console.error("[register] verification email failed:", e);
+  });
 
   return json({ ok: true, requiresVerification: true }, 201);
 }

@@ -25,7 +25,7 @@ export async function POST(req: Request) {
   // Only (re)send for real, still-unverified password accounts. Always return
   // ok so the endpoint can't be used to probe which emails are registered.
   if (user?.passwordHash && !user.emailVerified) {
-    await createAndSendEmailVerification(email);
+    void createAndSendEmailVerification(email).catch(() => {});
   }
   return json({ ok: true });
 }
