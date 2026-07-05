@@ -26,7 +26,11 @@ export function AccountsToaster() {
       done.current = true;
       router.replace(pathname);
     } else if (error) {
-      toast.error(ERRORS[error] ?? "Что-то пошло не так");
+      const reason = sp.get("reason");
+      toast.error(ERRORS[error] ?? "Что-то пошло не так", {
+        description: reason || undefined,
+        duration: reason ? 10000 : 4000,
+      });
       done.current = true;
       router.replace(pathname);
     }

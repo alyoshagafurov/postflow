@@ -65,8 +65,12 @@ export async function GET(
   } catch (e) {
     // eslint-disable-next-line no-console
     console.error("[connect] callback failed", e);
+    const reason = e instanceof Error ? e.message : "unknown";
     return NextResponse.redirect(
-      new URL("/accounts?error=connect_failed", appUrl),
+      new URL(
+        `/accounts?error=connect_failed&reason=${encodeURIComponent(reason.slice(0, 180))}`,
+        appUrl,
+      ),
     );
   }
 }
