@@ -137,10 +137,16 @@ export const youtubePublisher: Publisher = {
       const id = res.data.id;
       if (!id) throw new Error("YouTube не вернул ID видео");
       const uploadStatus = res.data.status?.uploadStatus;
+      if (uploadStatus === "failed" || uploadStatus === "rejected") {
+        throw new Error(
+          `YouTube отклонил видео: ${res.data.status?.rejectionReason ?? res.data.status?.failureReason ?? uploadStatus}`,
+        );
+      }
+      // Insert succeeded → the video is on YouTube; further encoding is async.
       return {
         platformPostId: id,
         platformUrl: `https://youtu.be/${id}`,
-        status: uploadStatus === "processed" ? "PUBLISHED" : "PROCESSING",
+        status: "PUBLISHED",
       };
     } finally {
       await cleanup();
