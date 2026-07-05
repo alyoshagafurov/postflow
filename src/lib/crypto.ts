@@ -21,14 +21,16 @@ function getKey(): Buffer {
   }
   let key: Buffer;
   if (/^[0-9a-fA-F]{64}$/.test(raw)) {
+    // 64 hex chars → 32 raw bytes.
     key = Buffer.from(raw, "hex");
   } else {
-    key = Buffer.from(raw, "base64");
-  }
-  if (key.length !== KEY_LEN) {
-    throw new Error(
-      `TOKEN_ENCRYPTION_KEY must decode to ${KEY_LEN} bytes (got ${key.length}). Use 64 hex chars or 32-byte base64.`,
-    );
+    const decoded = Buffer.from(raw, "base64");
+    // Accept a 32-byte base64 key; otherwise derive a stable 32-byte key from
+    // whatever value was provided, so any TOKEN_ENCRYPTION_KEY works.
+    key =
+      decoded.length === KEY_LEN
+        ? decoded
+        : crypto.createHash("sha256").update(raw, "utf8").digest();
   }
   cachedKey = key;
   return key;
