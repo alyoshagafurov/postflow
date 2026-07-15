@@ -1,5 +1,5 @@
+import Image from "next/image";
 import Link from "next/link";
-import { Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function Logo({
@@ -18,8 +18,15 @@ export function Logo({
         className,
       )}
     >
-      <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-primary-foreground shadow-[0_0_24px_hsl(var(--primary)/0.45)]">
-        <Zap className="h-4 w-4" />
+      <span className="relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] shadow-[0_0_18px_hsl(var(--primary)/0.4)]">
+        <Image
+          src="/logo.png"
+          alt="PostFlow"
+          width={32}
+          height={32}
+          priority
+          className="h-8 w-8 object-contain"
+        />
       </span>
       {showText && <span className="text-lg tracking-tight">PostFlow</span>}
     </span>
