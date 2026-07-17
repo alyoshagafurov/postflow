@@ -12,12 +12,10 @@ function parseTags(hashtags?: string | null): string[] {
 /**
  * Resolve the effective text for a target, honouring per-platform overrides
  * when the post is in per-platform mode, otherwise the shared post text.
+ * App-domain logic (post → text); intentionally provider-agnostic.
  */
 export function resolveContent(
-  post: Pick<
-    Post,
-    "title" | "description" | "hashtags" | "perPlatformText"
-  >,
+  post: Pick<Post, "title" | "description" | "hashtags" | "perPlatformText">,
   target?: Pick<PostTarget, "title" | "caption" | "hashtags"> | null,
 ) {
   const perPlatform = post.perPlatformText && target;

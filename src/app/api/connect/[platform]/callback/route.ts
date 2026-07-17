@@ -1,18 +1,13 @@
 import { NextResponse } from "next/server";
-import { Platform, SocialAccountStatus } from "@prisma/client";
+import { cookies } from "next/headers";
 import { getSession } from "@/lib/session";
-import { getPublisher } from "@/lib/publishers";
-import { verifyState } from "@/lib/oauth-state";
-import { saveConnectedAccount } from "@/lib/social-accounts";
+import { getProvider } from "@/providers/core/registry";
+import { completeConnect } from "@/providers/service";
+import { platformForProviderId } from "@/providers/adapters/platform-map";
 import { writeAudit } from "@/lib/audit";
 import { env } from "@/lib/env";
 
-const PLATFORM_MAP: Record<string, Platform> = {
-  youtube: Platform.YOUTUBE,
-  tiktok: Platform.TIKTOK,
-  instagram: Platform.INSTAGRAM,
-};
-
+/** OAuth redirect handler — exchanges the code and persists the account. */
 export async function GET(
   req: Request,
   { params }: { params: { platform: string } },
@@ -23,45 +18,45 @@ export async function GET(
     return NextResponse.redirect(new URL("/login", appUrl));
   }
 
-  const platform = PLATFORM_MAP[params.platform];
-  const publisher = platform ? getPublisher(platform) : null;
-  if (!publisher) {
-    return NextResponse.redirect(
-      new URL("/accounts?error=not_configured", appUrl),
-    );
+  const providerId = params.platform;
+  const provider = getProvider(providerId);
+  if (!provider) {
+    return NextResponse.redirect(new URL("/accounts?error=not_configured", appUrl));
   }
 
   const { searchParams } = new URL(req.url);
   if (searchParams.get("error")) {
     return NextResponse.redirect(new URL("/accounts?error=denied", appUrl));
   }
-
   const code = searchParams.get("code");
   const state = searchParams.get("state");
-  const data = state ? verifyState(state) : null;
-  if (!code || !data || data.userId !== session.user.id) {
-    return NextResponse.redirect(
-      new URL("/accounts?error=invalid_state", appUrl),
-    );
+  if (!code || !state) {
+    return NextResponse.redirect(new URL("/accounts?error=invalid_state", appUrl));
   }
 
+  const pkceVerifier = cookies().get(`pf_pkce_${providerId}`)?.value;
+
   try {
-    const redirectUri = `${appUrl}/api/connect/${params.platform}/callback`;
-    const connected = await publisher.connect(code, redirectUri);
-    const status = publisher.requiresReview?.()
-      ? SocialAccountStatus.PENDING_VERIFICATION
-      : SocialAccountStatus.ACTIVE;
-    await saveConnectedAccount(session.user.id, platform, connected, status);
+    const redirectUri = `${appUrl}/api/connect/${providerId}/callback`;
+    const { platformAccountId } = await completeConnect(providerId, {
+      code,
+      state,
+      redirectUri,
+      expectedUserId: session.user.id,
+      pkceVerifier,
+    });
     await writeAudit({
       userId: session.user.id,
       action: "social_account.connect",
-      platform,
+      platform: platformForProviderId(providerId) ?? undefined,
       targetType: "SocialAccount",
-      targetId: connected.platformAccountId,
+      targetId: platformAccountId,
     });
-    return NextResponse.redirect(
-      new URL(`/accounts?connected=${params.platform}`, appUrl),
+    const res = NextResponse.redirect(
+      new URL(`/accounts?connected=${providerId}`, appUrl),
     );
+    res.cookies.delete(`pf_pkce_${providerId}`);
+    return res;
   } catch (e) {
     // eslint-disable-next-line no-console
     console.error("[connect] callback failed", e);

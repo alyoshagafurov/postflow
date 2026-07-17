@@ -8,10 +8,10 @@ import {
   redisConnection,
   type PublishJobData,
 } from "@/lib/queue";
-import { getPublisher } from "@/lib/publishers";
-import { PlatformNotVerifiedError } from "@/lib/publishers/types";
-import { ensureFreshTokens } from "@/lib/social-accounts";
-import { resolveContent } from "@/lib/publishers/content";
+import { getProvider } from "@/providers/core/registry";
+import { ProviderError } from "@/providers/core/errors";
+import { providerIdForPlatform, publishAccountVideo } from "@/providers/service";
+import { resolveContent } from "@/lib/content";
 import { recomputePostStatus } from "@/lib/posts";
 import { notifyPublication } from "@/lib/notifications";
 import { enqueuePublication } from "@/lib/scheduler";
@@ -82,52 +82,46 @@ async function processPublication(publicationId: string) {
   });
 
   try {
-    const publisher = getPublisher(pub.platform);
-    if (!publisher || !publisher.isConfigured()) {
+    const providerId = providerIdForPlatform(pub.platform);
+    const provider = getProvider(providerId);
+    if (!provider || !provider.isConfigured()) {
       throw new Error(`Интеграция ${pub.platform} не настроена`);
     }
     if (pub.socialAccount.status === SocialAccountStatus.PENDING_VERIFICATION) {
-      throw new PlatformNotVerifiedError(pub.platform);
+      const err = new Error(
+        `Аккаунт ${pub.platform} ожидает верификации платформы. Публикация станет доступна после прохождения ревью.`,
+      );
+      (err as { code?: string }).code = "NOT_VERIFIED";
+      throw err;
     }
     if (!pub.post.videoKey) throw new Error("У поста нет видео");
 
-    const tokens = await ensureFreshTokens(pub.socialAccount);
     const content = resolveContent(pub.post, pub.postTarget);
+    const result = await publishAccountVideo(pub.socialAccount, {
+      title: content.title,
+      caption: content.caption,
+      description: content.description,
+      tags: content.tags,
+      privacy:
+        (pub.postTarget.privacy as "public" | "private" | "unlisted") || "public",
+      media: { kind: "video", key: pub.post.videoKey, mime: pub.post.videoMime },
+      publishNow: true,
+      scheduledAt: pub.scheduledAt,
+    });
 
-    const result = await publisher.publish(
-      tokens,
-      {
-        title: content.title,
-        description: content.description,
-        caption: content.caption,
-        tags: content.tags,
-        privacy:
-          (pub.postTarget.privacy as "public" | "private" | "unlisted") ||
-          "public",
-        publishNow: true,
-        scheduledAt: pub.scheduledAt,
-        videoKey: pub.post.videoKey,
-        videoMime: pub.post.videoMime,
-      },
-      {
-        platformAccountId: pub.socialAccount.platformAccountId,
-        metadata: pub.socialAccount.metadata,
-      },
-    );
-
-    if (result.status === "PUBLISHED") {
+    const published = result.state === "PUBLISHED";
+    if (published) {
       await incrementUsage(pub.userId, tz);
     }
     await prisma.publication.update({
       where: { id: pub.id },
       data: {
-        status:
-          result.status === "PUBLISHED"
-            ? PublicationStatus.PUBLISHED
-            : PublicationStatus.PROCESSING,
+        status: published
+          ? PublicationStatus.PUBLISHED
+          : PublicationStatus.PROCESSING,
         platformPostId: result.platformPostId,
         platformUrl: result.platformUrl ?? null,
-        publishedAt: result.status === "PUBLISHED" ? new Date() : null,
+        publishedAt: published ? new Date() : null,
         countsAgainstDate: usageDate(tz),
         errorCode: null,
         errorMessage: null,
@@ -142,15 +136,23 @@ async function processPublication(publicationId: string) {
       url: result.platformUrl,
     });
   } catch (e) {
-    const message = e instanceof Error ? e.message : "Ошибка публикации";
+    const message =
+      e instanceof ProviderError
+        ? e.toUserMessage()
+        : e instanceof Error
+          ? e.message
+          : "Ошибка публикации";
+    const errorCode =
+      (e as { code?: string })?.code === "NOT_VERIFIED"
+        ? "NOT_VERIFIED"
+        : e instanceof ProviderError
+          ? e.code
+          : "PUBLISH_ERROR";
     await prisma.publication.update({
       where: { id: pub.id },
       data: {
         status: PublicationStatus.FAILED,
-        errorCode:
-          e instanceof PlatformNotVerifiedError
-            ? "NOT_VERIFIED"
-            : "PUBLISH_ERROR",
+        errorCode,
         errorMessage: message,
       },
     });

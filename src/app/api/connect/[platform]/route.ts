@@ -1,16 +1,13 @@
 import { NextResponse } from "next/server";
-import { Platform } from "@prisma/client";
 import { getSession } from "@/lib/session";
-import { getPublisher } from "@/lib/publishers";
-import { signState } from "@/lib/oauth-state";
+import { getProvider } from "@/providers/core/registry";
+import { startConnect } from "@/providers/service";
 import { env } from "@/lib/env";
 
-const PLATFORM_MAP: Record<string, Platform> = {
-  youtube: Platform.YOUTUBE,
-  tiktok: Platform.TIKTOK,
-  instagram: Platform.INSTAGRAM,
-};
-
+/**
+ * Begin an OAuth connect flow. `params.platform` is the provider id
+ * (youtube/tiktok/instagram/…). The provider registry is the source of truth.
+ */
 export async function GET(
   _req: Request,
   { params }: { params: { platform: string } },
@@ -21,21 +18,39 @@ export async function GET(
     return NextResponse.redirect(new URL("/login", appUrl));
   }
 
-  const platform = PLATFORM_MAP[params.platform];
-  const publisher = platform ? getPublisher(platform) : null;
-  if (!publisher || !publisher.isConfigured()) {
+  const providerId = params.platform;
+  const provider = getProvider(providerId);
+  if (!provider || !provider.isConfigured()) {
+    return NextResponse.redirect(
+      new URL(`/accounts?error=not_configured&platform=${providerId}`, appUrl),
+    );
+  }
+
+  const redirectUri = `${appUrl}/api/connect/${providerId}/callback`;
+  try {
+    const { url, pkceVerifier } = startConnect(providerId, {
+      userId: session.user.id,
+      redirectUri,
+    });
+    const res = NextResponse.redirect(url);
+    if (pkceVerifier) {
+      // Stash the PKCE verifier for the callback (httpOnly, short-lived).
+      res.cookies.set(`pf_pkce_${providerId}`, pkceVerifier, {
+        httpOnly: true,
+        secure: true,
+        sameSite: "lax",
+        maxAge: 600,
+        path: "/",
+      });
+    }
+    return res;
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : "unknown";
     return NextResponse.redirect(
       new URL(
-        `/accounts?error=not_configured&platform=${params.platform}`,
+        `/accounts?error=connect_failed&reason=${encodeURIComponent(reason.slice(0, 180))}`,
         appUrl,
       ),
     );
   }
-
-  const redirectUri = `${appUrl}/api/connect/${params.platform}/callback`;
-  const state = signState({
-    userId: session.user.id,
-    platform: params.platform,
-  });
-  return NextResponse.redirect(publisher.getAuthUrl(state, redirectUri));
 }

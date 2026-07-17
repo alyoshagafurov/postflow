@@ -1,11 +1,11 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { Plus, RefreshCw } from "lucide-react";
-import type { Platform } from "@prisma/client";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
-import { features } from "@/lib/env";
-import { ALL_PLATFORMS, PLATFORM_META } from "@/lib/platforms";
+import { PLATFORM_META } from "@/lib/platforms";
+import { listConnectableProviders } from "@/providers/ui";
+import { CAPABILITY_LABELS } from "@/lib/capability-labels";
 import { PageHeader } from "@/components/app/page-header";
 import { PlatformIcon } from "@/components/brand/platform-icon";
 import { Card, CardContent } from "@/components/ui/card";
@@ -34,11 +34,10 @@ export default async function AccountsPage() {
     orderBy: { createdAt: "asc" },
   });
 
-  const configured: Record<Platform, boolean> = {
-    YOUTUBE: features.youtube,
-    TIKTOK: features.tiktok,
-    INSTAGRAM: features.instagram,
-  };
+  const providers = listConnectableProviders();
+  const configuredSet = new Set(
+    providers.filter((p) => p.configured).map((p) => p.platform),
+  );
 
   return (
     <div>
@@ -51,54 +50,46 @@ export default async function AccountsPage() {
       />
 
       <div className="mb-10 grid gap-4 sm:grid-cols-3">
-        {ALL_PLATFORMS.map((p) => {
-          const meta = PLATFORM_META[p];
-          const slug = p.toLowerCase();
-          return (
-            <Card key={p}>
-              <CardContent className="flex flex-col items-center gap-3 p-6 text-center">
-                <span
-                  className="grid h-12 w-12 place-items-center rounded-xl"
-                  style={{ color: meta.color, background: `${meta.color}20` }}
-                >
-                  <PlatformIcon platform={p} className="h-6 w-6" />
-                </span>
-                <div className="font-medium">{meta.label}</div>
-                {configured[p] ? (
-                  <Button asChild size="sm" className="w-full">
-                    <a href={`/api/connect/${slug}`}>
-                      <Plus className="mr-2 h-4 w-4" />
-                      Подключить
-                    </a>
+        {providers.map((p) => (
+          <Card key={p.id}>
+            <CardContent className="flex flex-col items-center gap-3 p-6 text-center">
+              <span
+                className="grid h-12 w-12 place-items-center rounded-xl"
+                style={{ color: p.color, background: `${p.color}20` }}
+              >
+                <PlatformIcon platform={p.platform} className="h-6 w-6" />
+              </span>
+              <div className="font-medium">{p.label}</div>
+              <div className="flex flex-wrap justify-center gap-1">
+                {p.capabilities.slice(0, 4).map((c) => (
+                  <span
+                    key={c}
+                    className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                  >
+                    {CAPABILITY_LABELS[c] ?? c}
+                  </span>
+                ))}
+              </div>
+              {p.configured ? (
+                <Button asChild size="sm" className="w-full">
+                  <a href={`/api/connect/${p.id}`}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Подключить
+                  </a>
+                </Button>
+              ) : (
+                <div className="w-full space-y-1">
+                  <Button size="sm" variant="secondary" className="w-full" disabled>
+                    Не настроено
                   </Button>
-                ) : p === "YOUTUBE" ? (
-                  <div className="w-full space-y-1">
-                    <Button size="sm" className="w-full" disabled>
-                      Подключить
-                    </Button>
-                    <p className="text-xs text-muted-foreground">
-                      Требуется настройка Google OAuth
-                    </p>
-                  </div>
-                ) : (
-                  <div className="w-full space-y-1">
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      className="w-full"
-                      disabled
-                    >
-                      Скоро
-                    </Button>
-                    <p className="text-xs text-muted-foreground">
-                      Доступно после верификации платформы
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          );
-        })}
+                  <p className="text-xs text-muted-foreground">
+                    Требуется настройка интеграции
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       <h2 className="mb-4 text-lg font-semibold">Подключённые аккаунты</h2>
@@ -147,7 +138,7 @@ export default async function AccountsPage() {
                       )}
                     </div>
                   </div>
-                  {a.status === "EXPIRED" && configured[a.platform] && (
+                  {a.status === "EXPIRED" && configuredSet.has(a.platform) && (
                     <Button asChild size="sm" variant="outline">
                       <a href={`/api/connect/${a.platform.toLowerCase()}`}>
                         <RefreshCw className="mr-2 h-3.5 w-3.5" />

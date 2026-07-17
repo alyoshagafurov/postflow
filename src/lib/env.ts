@@ -11,19 +11,11 @@ export const env = {
   CRON_SECRET: process.env.CRON_SECRET ?? "",
   REDIS_URL: process.env.REDIS_URL ?? "",
 
+  // Google is used for BOTH app sign-in (NextAuth) and the YouTube provider,
+  // so it stays here. Every other social-platform credential/version/review
+  // flag lives in its provider's config: `src/providers/<platform>/config.ts`.
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID ?? "",
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET ?? "",
-
-  TIKTOK_CLIENT_KEY: process.env.TIKTOK_CLIENT_KEY ?? "",
-  TIKTOK_CLIENT_SECRET: process.env.TIKTOK_CLIENT_SECRET ?? "",
-
-  META_APP_ID: process.env.META_APP_ID ?? "",
-  META_APP_SECRET: process.env.META_APP_SECRET ?? "",
-
-  // Set to "true" once the platform app has passed review and Direct Post /
-  // content publishing is approved, so connected accounts become ACTIVE.
-  TIKTOK_APPROVED: process.env.TIKTOK_APPROVED ?? "",
-  INSTAGRAM_APPROVED: process.env.INSTAGRAM_APPROVED ?? "",
 
   S3_ENDPOINT: process.env.S3_ENDPOINT ?? "",
   S3_REGION: process.env.S3_REGION ?? "auto",
@@ -60,10 +52,9 @@ export const env = {
 // Feature flags — whether an integration has been configured. Use these
 // server-side to degrade gracefully with a clear message instead of crashing.
 export const features = {
+  // Social-platform availability is NOT flagged here — ask the provider
+  // registry instead (`provider.isConfigured()` / `@/providers/ui`).
   google: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),
-  youtube: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),
-  tiktok: Boolean(env.TIKTOK_CLIENT_KEY && env.TIKTOK_CLIENT_SECRET),
-  instagram: Boolean(env.META_APP_ID && env.META_APP_SECRET),
   s3: Boolean(env.S3_ENDPOINT && env.S3_ACCESS_KEY_ID && env.S3_SECRET_ACCESS_KEY),
   stripe: Boolean(env.STRIPE_SECRET_KEY),
   smtp: Boolean(env.SMTP_HOST && env.SMTP_USER),
